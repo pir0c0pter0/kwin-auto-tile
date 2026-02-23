@@ -80,11 +80,14 @@ PlasmoidItem {
 
     // ─── Compact Representation (panel icon) ───
 
-    compactRepresentation: Item {
+    compactRepresentation: MouseArea {
         id: compactRoot
 
         Layout.preferredWidth: columnBars.implicitWidth + Kirigami.Units.smallSpacing * 2
         Layout.preferredHeight: Kirigami.Units.iconSizes.small
+
+        hoverEnabled: true
+        onClicked: root.expanded = !root.expanded
 
         Row {
             id: columnBars
