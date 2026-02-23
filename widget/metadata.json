@@ -1,0 +1,20 @@
+{
+    "KPackageStructure": "Plasma/Applet",
+    "X-Plasma-API-Minimum-Version": "6.0",
+    "KPlugin": {
+        "Id": "com.github.pir0c0pter0.kwin-auto-tile-widget",
+        "Name": "Auto Tile",
+        "Description": "Column count selector for KWin Auto Tile",
+        "Icon": "view-split-left-right",
+        "Category": "Windows and Tasks",
+        "Authors": [
+            {
+                "Name": "mariostjr",
+                "Email": ""
+            }
+        ],
+        "License": "MIT",
+        "Version": "1.0.0",
+        "Website": "https://github.com/pir0c0pter0/kwin-auto-tile"
+    }
+}
