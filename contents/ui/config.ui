@@ -7,7 +7,7 @@
                 <x>0</x>
                 <y>0</y>
                 <width>480</width>
-                <height>520</height>
+                <height>430</height>
             </rect>
         </property>
         <layout class="QVBoxLayout" name="mainLayout">
@@ -15,7 +15,7 @@
             <item>
                 <widget class="QCheckBox" name="kcfg_enabled">
                     <property name="text">
-                        <string>Enable auto-tiling</string>
+                        <string>Enable manual tiling</string>
                     </property>
                 </widget>
             </item>
@@ -30,7 +30,7 @@
                         <item row="0" column="0">
                             <widget class="QLabel" name="maxVisibleLabel">
                                 <property name="text">
-                                    <string>Maximum visible columns:</string>
+                                    <string>Maximum columns per row:</string>
                                 </property>
                             </widget>
                         </item>
@@ -67,63 +67,6 @@
                                 </property>
                                 <property name="suffix">
                                     <string> px</string>
-                                </property>
-                            </widget>
-                        </item>
-                    </layout>
-                </widget>
-            </item>
-
-            <!-- Performance group -->
-            <item>
-                <widget class="QGroupBox" name="performanceGroup">
-                    <property name="title">
-                        <string>Performance</string>
-                    </property>
-                    <layout class="QFormLayout" name="performanceLayout">
-                        <item row="0" column="0">
-                            <widget class="QLabel" name="debounceMsLabel">
-                                <property name="text">
-                                    <string>Debounce delay (ms):</string>
-                                </property>
-                            </widget>
-                        </item>
-                        <item row="0" column="1">
-                            <widget class="QSpinBox" name="kcfg_debounceMs">
-                                <property name="minimum">
-                                    <number>50</number>
-                                </property>
-                                <property name="maximum">
-                                    <number>1000</number>
-                                </property>
-                                <property name="value">
-                                    <number>300</number>
-                                </property>
-                                <property name="singleStep">
-                                    <number>50</number>
-                                </property>
-                                <property name="suffix">
-                                    <string> ms</string>
-                                </property>
-                            </widget>
-                        </item>
-                        <item row="1" column="0">
-                            <widget class="QLabel" name="maxEventsLabel">
-                                <property name="text">
-                                    <string>Max events per second:</string>
-                                </property>
-                            </widget>
-                        </item>
-                        <item row="1" column="1">
-                            <widget class="QSpinBox" name="kcfg_maxEventsPerSecond">
-                                <property name="minimum">
-                                    <number>5</number>
-                                </property>
-                                <property name="maximum">
-                                    <number>50</number>
-                                </property>
-                                <property name="value">
-                                    <number>20</number>
                                 </property>
                             </widget>
                         </item>

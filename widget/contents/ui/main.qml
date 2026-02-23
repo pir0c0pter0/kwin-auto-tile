@@ -9,10 +9,12 @@ PlasmoidItem {
     id: root
 
     property int maxVisible: 4
-    property bool tileEnabled: true
+    property bool tileEnabled: false
+    property var commandQueue: []
+    property bool commandInFlight: false
 
     preferredRepresentation: compactRepresentation
-    toolTipMainText: "Auto Tile"
+    toolTipMainText: "Tile Layout"
     toolTipSubText: tileEnabled
         ? maxVisible + (maxVisible === 1 ? " column" : " columns")
         : "Disabled"
@@ -43,51 +45,73 @@ PlasmoidItem {
             }
 
             disconnectSource(sourceName)
+            root.commandInFlight = false
+            root.runNextCommand()
         }
     }
 
+    function enqueueCommand(command) {
+        commandQueue.push(command)
+        runNextCommand()
+    }
+
+    function runNextCommand() {
+        if (commandInFlight || commandQueue.length === 0) {
+            return
+        }
+
+        commandInFlight = true
+        let nextCommand = commandQueue.shift()
+        executable.connectSource(nextCommand)
+    }
+
     function readState() {
-        executable.connectSource(
+        enqueueCommand(
             "kreadconfig6 --file kwinrc --group Script-kwin-auto-tile --key maxVisible --default 4"
         )
-        executable.connectSource(
-            "kreadconfig6 --file kwinrc --group Plugins --key kwin-auto-tileEnabled --default true"
+        enqueueCommand(
+            "kreadconfig6 --file kwinrc --group Plugins --key kwin-auto-tileEnabled --default false"
         )
     }
 
     function setColumns(n) {
         let safe = Math.max(1, Math.min(8, Math.trunc(n)))
         root.maxVisible = safe
-        executable.connectSource(
-            "kwriteconfig6 --file kwinrc --group Script-kwin-auto-tile --key maxVisible " + safe +
-            " && qdbus6 org.kde.KWin /KWin reconfigure"
+        enqueueCommand(
+            "kwriteconfig6 --file kwinrc --group Script-kwin-auto-tile --key maxVisible " + safe
         )
+        enqueueCommand("qdbus6 org.kde.KWin /KWin reconfigure")
     }
 
     function toggleEnabled() {
         let newState = !root.tileEnabled
         root.tileEnabled = newState
-        executable.connectSource(
+        enqueueCommand(
             "kwriteconfig6 --file kwinrc --group Plugins --key kwin-auto-tileEnabled " +
-            (newState ? "true" : "false") +
-            " && qdbus6 org.kde.KWin /KWin reconfigure"
+            (newState ? "true" : "false")
         )
+        enqueueCommand("qdbus6 org.kde.KWin /KWin reconfigure")
     }
 
     function retile() {
-        executable.connectSource("qdbus6 org.kde.KWin /KWin reconfigure #" + Date.now())
+        enqueueCommand("qdbus6 org.kde.KWin /KWin reconfigure")
     }
 
     // ─── Compact Representation (panel icon) ───
 
-    compactRepresentation: MouseArea {
+    compactRepresentation: Item {
         id: compactRoot
 
-        Layout.preferredWidth: columnBars.implicitWidth + Kirigami.Units.smallSpacing * 2
-        Layout.preferredHeight: Kirigami.Units.iconSizes.small
+        implicitWidth: columnBars.implicitWidth + Kirigami.Units.smallSpacing * 2
+        implicitHeight: Kirigami.Units.iconSizes.small
 
-        hoverEnabled: true
-        onClicked: root.expanded = !root.expanded
+        MouseArea {
+            anchors.fill: parent
+            hoverEnabled: true
+            acceptedButtons: Qt.LeftButton
+            cursorShape: Qt.PointingHandCursor
+            onClicked: root.expanded = !root.expanded
+        }
 
         Row {
             id: columnBars
@@ -122,9 +146,8 @@ PlasmoidItem {
     // ─── Full Representation (popup) ───
 
     fullRepresentation: Item {
-        Layout.preferredWidth: Kirigami.Units.gridUnit * 16
-        Layout.preferredHeight: Kirigami.Units.gridUnit * 15
-        Layout.minimumWidth: Kirigami.Units.gridUnit * 14
+        implicitWidth: Kirigami.Units.gridUnit * 16
+        implicitHeight: Kirigami.Units.gridUnit * 15
 
         ColumnLayout {
             anchors.fill: parent
