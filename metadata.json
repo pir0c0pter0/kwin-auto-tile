@@ -2,7 +2,7 @@
     "KPlugin": {
         "Id": "kwin-auto-tile",
         "Name": "Auto Tile",
-        "Description": "Automatically distributes windows in equal-width columns",
+        "Description": "Manual window tiling into bounded columns and rows",
         "Icon": "view-grid",
         "Authors": [
             {

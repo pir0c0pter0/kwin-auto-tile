@@ -1,41 +1,57 @@
-// kwin-auto-tile: Auto-tiling KWin Script for KDE Plasma 6
-// Distributes windows in equal-width columns per monitor/desktop.
+// kwin-auto-tile: Manual tiling script for KDE Plasma 6
+// Organizes windows into a bounded grid only when explicitly triggered.
 
 // ─── Section 1: Configuration ───
 
 var config = {
     enabled: readConfig("enabled", true),
     maxVisible: readConfig("maxVisible", 4),
-    debounceMs: readConfig("debounceMs", 300),
-    maxEventsPerSecond: readConfig("maxEventsPerSecond", 20),
     gapSize: readConfig("gapSize", 8),
     respectMinimized: readConfig("respectMinimized", true),
     filterByClass: []
 };
 
-(function parseFilterByClass() {
-    var raw = readConfig("filterByClass", "");
-    if (typeof raw === "string" && raw.length > 0) {
-        // Support both comma-separated and newline-separated formats
-        config.filterByClass = raw.split(/[,\n]/)
-            .map(function(s) { return s.trim().toLowerCase(); })
-            .filter(function(s) { return s.length > 0; });
+function clampInt(value, fallback, min, max) {
+    var parsed = parseInt(value, 10);
+    if (isNaN(parsed)) {
+        return fallback;
     }
-})();
+    if (parsed < min) {
+        return min;
+    }
+    if (parsed > max) {
+        return max;
+    }
+    return parsed;
+}
+
+function parseFilterByClassValue(raw) {
+    if (typeof raw !== "string" || raw.length === 0) {
+        return [];
+    }
+
+    // Support both comma-separated and newline-separated formats
+    return raw.split(/[,\n]/)
+        .map(function(s) { return s.trim().toLowerCase(); })
+        .filter(function(s) { return s.length > 0; });
+}
+
+function refreshConfig() {
+    config.enabled = !!readConfig("enabled", config.enabled);
+    config.maxVisible = clampInt(readConfig("maxVisible", config.maxVisible), 4, 1, 8);
+    config.gapSize = clampInt(readConfig("gapSize", config.gapSize), 8, 0, 32);
+    config.respectMinimized = !!readConfig("respectMinimized", config.respectMinimized);
+    config.filterByClass = parseFilterByClassValue(readConfig("filterByClass", ""));
+}
+
+refreshConfig();
 
 // ─── Section 2: State ───
 
-var knownWindowIds = {};       // id -> true (tracks connected windows)
+var knownWindowIds = {};       // id -> true (tracks known windows)
 var prevLayoutKeys = {};       // "desktopId:outputName" -> layout cache key
 var excludedWindowIds = {};    // id -> true (user-excluded via context menu)
 var windowInsertOrder = [];    // window ids in insertion order for stable layout
-
-// Rate limiter state
-var eventCount = 0;
-var eventWindowStart = 0;
-
-// Debounce state: timestamp-based via recursive callDBus polling
-var debounceScheduledAt = 0;
 
 // ─── Section 3: Window Filtering ───
 
@@ -189,28 +205,48 @@ function redistributeGroup(group) {
     }
 
     var gap = config.gapSize;
-    var maxVis = config.maxVisible;
-
-    // Always calculate width based on maxVisible (like niri behavior)
-    var totalGapsH = gap * (maxVis + 1);
-    var colWidth = Math.floor((area.width - totalGapsH) / maxVis);
-    var colHeight = area.height - (gap * 2);
-
-    // Position each window (up to maxVisible)
-    var visibleCount = Math.min(count, maxVis);
-    for (var i = 0; i < visibleCount; i++) {
-        var win = windows[i];
-        var x = area.x + gap + (i * (colWidth + gap));
-        var y = area.y + gap;
-
-        win.frameGeometry = Qt.rect(x, y, colWidth, colHeight);
+    var maxColumns = Math.max(1, config.maxVisible);
+    var rowCount = Math.ceil(count / maxColumns);
+    var totalGapsV = gap * (rowCount + 1);
+    var availableHeight = area.height - totalGapsV;
+    if (availableHeight <= 0) {
+        return;
     }
 
-    // Move overflow windows off-screen to the right (they remain accessible via task switcher)
-    for (var j = visibleCount; j < count; j++) {
-        var overflowWin = windows[j];
-        var offX = area.x + area.width + gap;
-        overflowWin.frameGeometry = Qt.rect(offX, area.y + gap, colWidth, colHeight);
+    var rowHeight = Math.floor(availableHeight / rowCount);
+    if (rowHeight <= 0) {
+        return;
+    }
+
+    var handled = 0;
+    for (var row = 0; row < rowCount; row++) {
+        var remaining = count - handled;
+        var columnsInRow = Math.min(maxColumns, remaining);
+        var totalGapsH = gap * (columnsInRow + 1);
+        var availableWidth = area.width - totalGapsH;
+        if (availableWidth <= 0) {
+            handled += columnsInRow;
+            continue;
+        }
+
+        var colWidth = Math.floor(availableWidth / columnsInRow);
+        if (colWidth <= 0) {
+            handled += columnsInRow;
+            continue;
+        }
+
+        var y = area.y + gap + (row * (rowHeight + gap));
+        for (var col = 0; col < columnsInRow; col++) {
+            var win = windows[handled + col];
+            var x = area.x + gap + (col * (colWidth + gap));
+            win.frameGeometry = {
+                x: x,
+                y: y,
+                width: colWidth,
+                height: rowHeight
+            };
+        }
+        handled += columnsInRow;
     }
 }
 
@@ -227,76 +263,18 @@ function redistribute() {
     }
 }
 
-// ─── Section 6: Debounce & Rate Limiting ───
+// ─── Section 6: Manual Retile Helpers ───
 
-function debouncePoll(scheduledAt) {
-    if (scheduledAt !== debounceScheduledAt) {
-        return;
-    }
-
-    var elapsed = Date.now() - scheduledAt;
-    if (elapsed < config.debounceMs) {
-        // Not enough time has passed, poll again
-        callDBus(
-            "org.kde.KWin", "/KWin", "org.kde.KWin", "currentDesktop",
-            function() { debouncePoll(scheduledAt); }
-        );
-    } else {
-        redistribute();
-    }
-}
-
-function scheduleRedistribute() {
-    if (!config.enabled) {
-        return;
-    }
-
-    var now = Date.now();
-
-    // Rate limiter: sliding window
-    if (now - eventWindowStart > 1000) {
-        eventWindowStart = now;
-        eventCount = 0;
-    }
-    eventCount++;
-    if (eventCount > config.maxEventsPerSecond) {
-        return;
-    }
-
-    // Reset debounce: new timestamp supersedes any pending poll
-    debounceScheduledAt = now;
-    var scheduledAt = debounceScheduledAt;
-
-    callDBus(
-        "org.kde.KWin", "/KWin", "org.kde.KWin", "currentDesktop",
-        function() { debouncePoll(scheduledAt); }
-    );
-}
-
-function invalidateCachesAndRedistribute() {
+function invalidateLayoutCache() {
     prevLayoutKeys = {};
-    scheduleRedistribute();
+}
+
+function forceRedistribute() {
+    invalidateLayoutCache();
+    redistribute();
 }
 
 // ─── Section 7: Event Handlers ───
-
-function connectWindowSignals(window) {
-    window.minimizedChanged.connect(function() {
-        invalidateCachesAndRedistribute();
-    });
-
-    window.fullScreenChanged.connect(function() {
-        invalidateCachesAndRedistribute();
-    });
-
-    window.desktopsChanged.connect(function() {
-        invalidateCachesAndRedistribute();
-    });
-
-    window.outputChanged.connect(function() {
-        invalidateCachesAndRedistribute();
-    });
-}
 
 function onWindowAdded(window) {
     if (!window) {
@@ -305,18 +283,13 @@ function onWindowAdded(window) {
 
     var id = window.internalId;
 
-    // Track insertion order (only for tileable windows)
-    if (isTileable(window) && windowInsertOrder.indexOf(id) === -1) {
+    // Track insertion order so manual re-tiling remains stable.
+    if (windowInsertOrder.indexOf(id) === -1) {
         windowInsertOrder.push(id);
     }
 
-    // Connect per-window signals (only once)
-    if (!knownWindowIds[id]) {
-        knownWindowIds[id] = true;
-        connectWindowSignals(window);
-    }
-
-    invalidateCachesAndRedistribute();
+    knownWindowIds[id] = true;
+    invalidateLayoutCache();
 }
 
 function onWindowRemoved(window) {
@@ -334,7 +307,7 @@ function onWindowRemoved(window) {
         windowInsertOrder.splice(idx, 1);
     }
 
-    invalidateCachesAndRedistribute();
+    invalidateLayoutCache();
 }
 
 // ─── Section 8: Keyboard Shortcuts ───
@@ -346,7 +319,7 @@ function registerShortcuts() {
         "Meta+Ctrl+1",
         function() {
             config.maxVisible = 1;
-            invalidateCachesAndRedistribute();
+            forceRedistribute();
         }
     );
 
@@ -356,7 +329,7 @@ function registerShortcuts() {
         "Meta+Ctrl+2",
         function() {
             config.maxVisible = 2;
-            invalidateCachesAndRedistribute();
+            forceRedistribute();
         }
     );
 
@@ -366,7 +339,7 @@ function registerShortcuts() {
         "Meta+Ctrl+3",
         function() {
             config.maxVisible = 3;
-            invalidateCachesAndRedistribute();
+            forceRedistribute();
         }
     );
 
@@ -376,7 +349,7 @@ function registerShortcuts() {
         "Meta+Ctrl+4",
         function() {
             config.maxVisible = 4;
-            invalidateCachesAndRedistribute();
+            forceRedistribute();
         }
     );
 
@@ -385,7 +358,7 @@ function registerShortcuts() {
         "Auto Tile: Force re-tile all windows",
         "Meta+Ctrl+T",
         function() {
-            invalidateCachesAndRedistribute();
+            forceRedistribute();
         }
     );
 }
@@ -405,7 +378,7 @@ function registerContextMenu() {
                 } else {
                     excludedWindowIds[id] = true;
                 }
-                invalidateCachesAndRedistribute();
+                forceRedistribute();
             }
         };
     });
@@ -421,37 +394,22 @@ function registerContextMenu() {
     registerShortcuts();
     registerContextMenu();
 
-    // Connect workspace-level signals
+    // Track windows for insertion-order stability, but do not auto-retile.
     workspace.windowAdded.connect(onWindowAdded);
     workspace.windowRemoved.connect(onWindowRemoved);
-    workspace.currentDesktopChanged.connect(function() {
-        invalidateCachesAndRedistribute();
-    });
 
-    // Screen/output changes: try both signal names for KWin 5/6 compat
-    if (workspace.screensChanged) {
-        workspace.screensChanged.connect(function() {
-            invalidateCachesAndRedistribute();
-        });
-    }
-    if (workspace.outputsChanged) {
-        workspace.outputsChanged.connect(function() {
-            invalidateCachesAndRedistribute();
-        });
-    }
-
-    // Initialize with existing windows (only track tileable in insert order)
+    // Initialize with existing windows.
     var existingWindows = workspace.windowList();
     for (var i = 0; i < existingWindows.length; i++) {
         var win = existingWindows[i];
         var id = win.internalId;
         knownWindowIds[id] = true;
-        if (isTileable(win)) {
+        if (windowInsertOrder.indexOf(id) === -1) {
             windowInsertOrder.push(id);
         }
-        connectWindowSignals(win);
     }
 
-    // Initial redistribution
-    redistribute();
+    // Keep the explicit "click to tile" behavior available in the widget,
+    // which reloads this script and expects an immediate re-tile.
+    forceRedistribute();
 })();
