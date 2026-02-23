@@ -157,6 +157,37 @@ Apply frameGeometry to each window
 | `window.desktopsChanged` | Window moved to another desktop → redistribute |
 | `window.outputChanged` | Window moved to another monitor → redistribute |
 
+## Panel Widget (Plasmoid)
+
+A **Plasma Widget** is included for quick access from the taskbar — click the icon to open a visual column selector, toggle auto-tiling on/off, or force a re-tile.
+
+### Installing the widget
+
+```bash
+cd kwin-auto-tile
+
+# Install
+kpackagetool6 --type=Plasma/Applet -i widget/
+
+# Or upgrade if already installed
+kpackagetool6 --type=Plasma/Applet -u widget/
+```
+
+Then right-click the panel > **Add Widgets...** > search for **Auto Tile** and drag it to the panel.
+
+### Widget features
+
+- **Panel icon** — shows column count as vertical bars + green status dot
+- **Popup selector** — 2x2 grid to pick 1-4 columns visually
+- **Enable/Disable toggle** — turns auto-tiling on or off
+- **Re-tile button** — forces immediate redistribution
+
+### Uninstalling the widget
+
+```bash
+kpackagetool6 --type=Plasma/Applet -r com.github.pir0c0pter0.kwin-auto-tile-widget
+```
+
 ## Project Structure
 
 ```
@@ -169,6 +200,11 @@ kwin-auto-tile/
 │   │   └── main.xml           # Configuration schema (KCfg)
 │   └── ui/
 │       └── config.ui          # Settings UI (Qt Designer)
+├── widget/                    # Plasma Widget (Plasmoid)
+│   ├── metadata.json          # Plasma/Applet metadata
+│   └── contents/
+│       └── ui/
+│           └── main.qml       # Compact icon + popup selector
 ├── LICENSE
 └── README.md
 ```
