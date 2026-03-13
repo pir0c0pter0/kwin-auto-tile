@@ -1,5 +1,7 @@
 # KWin Auto Tile
 
+**Author:** Pir0c0pter0 — pir0c0pter0000@gmail.com
+
 A KWin Script for **KDE Plasma 6** that arranges windows in a grid when you explicitly trigger tiling (widget button or shortcut). It does not keep redistributing continuously in the background.
 
 > Ported from [niri-auto-tile](https://github.com/pir0c0pter0/niri-auto-tile), originally built for the niri Wayland compositor. Also available as [`kde-auto-tile/`](https://github.com/pir0c0pter0/niri-auto-tile/tree/main/kde-auto-tile) inside the monorepo.
